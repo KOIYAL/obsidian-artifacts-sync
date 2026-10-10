@@ -1,7 +1,11 @@
 import { FileSystemAdapter, Notice, Plugin, TAbstractFile, normalizePath } from "obsidian";
 import path from "node:path";
 import { parseArtifactsRemote, tokenStatus, validateSettings } from "./core";
+import { ArtifactsApi, repoNameFromVault } from "./api";
 import { ArtifactsGit, GitConflictError } from "./git";
+
+/** Renew automatically when less than this much lifetime is left. */
+const RENEW_BEFORE_MS = 2 * 24 * 3_600_000;
 import { ArtifactsSyncSettingTab, DEFAULT_SETTINGS, type ArtifactsSyncSettings } from "./settings";
 
 const CHANGE_DEBOUNCE_MS = 30_000;
@@ -63,6 +67,73 @@ export default class ArtifactsSyncPlugin extends Plugin {
     this.changeTimer = window.setTimeout(() => void this.runSync("change"), CHANGE_DEBOUNCE_MS);
   }
 
+  suggestedRepoName(): string {
+    return repoNameFromVault(this.app.vault.getName());
+  }
+
+  private api(): ArtifactsApi | null {
+    const { accountId, apiToken } = this.settings;
+    if (!/^[0-9a-f]{32}$/.test(accountId)) {
+      new Notice("Cloudflare Artifacts Sync: enter your 32-character account ID.");
+      return null;
+    }
+    if (!apiToken) {
+      new Notice("Cloudflare Artifacts Sync: enter a Cloudflare API token with the Artifacts permission.");
+      return null;
+    }
+    return new ArtifactsApi({ accountId, apiToken });
+  }
+
+  /** Create namespace and repository as needed, issue a write token, and store remote and token. */
+  async setupRepository(): Promise<void> {
+    const api = this.api();
+    if (!api) return;
+    const namespace = this.settings.namespace || "default";
+    const repoName = this.settings.repoName || this.suggestedRepoName();
+    try {
+      await api.ensureNamespace(namespace);
+      const repo = await api.ensureRepo(namespace, repoName, this.settings.branch || "main");
+      const issued = await api.issueToken(namespace, repoName, "write");
+      this.settings.namespace = namespace;
+      this.settings.repoName = repoName;
+      this.settings.remoteUrl = repo.remote;
+      this.settings.token = issued.token;
+      await this.saveSettings();
+      new Notice(`Cloudflare Artifacts Sync: repository ${namespace}/${repoName} is ready. Run Sync now when you like.`);
+    } catch (err) {
+      new Notice(`Cloudflare Artifacts Sync: setup failed: ${err instanceof Error ? err.message : String(err)}`, 10_000);
+      console.error("[cloudflare-artifacts-sync] setup", err);
+    }
+  }
+
+  /**
+   * Issue a new repository token when the current one is close to expiry (or always, when forced).
+   * Silent when the API token is not configured.
+   */
+  async renewToken(force = false): Promise<boolean> {
+    if (!this.settings.apiToken || !this.settings.repoName) {
+      if (force) new Notice("Cloudflare Artifacts Sync: set the API token and repository name first, or run Set up.");
+      return false;
+    }
+    if (!force) {
+      const status = tokenStatus(this.settings.token, Date.now());
+      const soon = status.expired || (status.remainingMs !== null && status.remainingMs < RENEW_BEFORE_MS);
+      if (!soon || !this.settings.autoRenewToken) return false;
+    }
+    const api = this.api();
+    if (!api) return false;
+    try {
+      const issued = await api.issueToken(this.settings.namespace || "default", this.settings.repoName, "write");
+      this.settings.token = issued.token;
+      await this.saveSettings();
+      if (force) new Notice("Cloudflare Artifacts Sync: issued a new repository token.");
+      return true;
+    } catch (err) {
+      new Notice(`Cloudflare Artifacts Sync: could not renew the token: ${err instanceof Error ? err.message : String(err)}`, 10_000);
+      return false;
+    }
+  }
+
   /** Absolute path of the working tree, or null when this vault is not on a local disk. */
   private workingTree(): string | null {
     const adapter = this.app.vault.adapter;
@@ -113,6 +184,7 @@ export default class ArtifactsSyncPlugin extends Plugin {
       new Notice("Cloudflare Artifacts Sync: a sync is already running.");
       return;
     }
+    await this.renewToken();
     const client = this.client();
     if (!client) return;
     this.running = true;

@@ -15,15 +15,21 @@ One command (or a timer) does commit → pull → push. No Git knowledge is need
 
 ## Network use
 
-This plugin talks only to the Artifacts remote URL you configure (`https://<account>.artifacts.cloudflare.net/…`), using the repository token you paste. It sends your note contents there and nowhere else. There is no telemetry.
+This plugin talks to two Cloudflare endpoints and nothing else:
 
-The token is stored in this vault's plugin data (`.obsidian/plugins/cloudflare-artifacts-sync/data.json`), like other sync plugins store credentials. Use a repository-scoped write token and issue a new one when it expires.
+- the Artifacts remote URL you configure (`https://<account>.artifacts.cloudflare.net/…`), where your note contents are pushed and pulled with the repository token;
+- `https://api.cloudflare.com` with your Cloudflare API token, only when you press **Set up** or when a repository token is renewed.
 
-## Setup
+There is no telemetry. Tokens are stored in this vault's plugin data (`.obsidian/plugins/cloudflare-artifacts-sync/data.json`), like other sync plugins store credentials.
 
-1. In the Cloudflare dashboard open **Storage & databases → Artifacts**, create a namespace (or use `default`) and a repository. Copy its **remote URL** and issue a **write token**. (Artifacts needs the Workers Paid plan; see Cloudflare's pricing.)
-2. In Obsidian, install the plugin and open its settings. Paste the remote URL and the token. Choose a branch (default `main`) and, optionally, a folder to sync.
-3. Run **Sync now** from the command palette. The first run creates the repository contents.
+## Setup (no command line needed)
+
+1. Create a Cloudflare API token once: dashboard → **My profile → API tokens → Create token → Create custom token**, permission **Account / Artifacts / Edit**, scoped to your account. Copy the token. (Artifacts needs the Workers Paid plan; see Cloudflare's pricing.)
+2. In Obsidian, install the plugin, open its settings and paste your **Account ID** and the **API token**. Leave the namespace as `default` and the repository name empty (the vault name is used), or choose your own.
+3. Press **Set up**. The plugin creates the namespace and repository if needed, issues a 30-day write token and fills in the remote URL and token. Tokens are renewed automatically while the API token is present.
+4. Run **Sync now** from the command palette. Optionally set an automatic sync interval.
+
+If you prefer not to store an API token, you can instead paste a remote URL and a repository token by hand (from the dashboard or `wrangler artifacts repos issue-token`). You will then need to paste a new token when it expires.
 
 ## When two places edit the same note
 
@@ -47,7 +53,7 @@ npm test          # unit tests for the pure logic
 
 Obsidian の保管庫（またはその中の 1 フォルダ）を Cloudflare Artifacts のリポジトリと同期します。Git の知識は不要で、remote URL とトークンを貼って「Sync now」を押すだけです。
 
-- 通信先は設定した Artifacts の URL だけです。ノートの内容をそこへ送ります。その他の送信や計測はありません。
-- トークンはこの保管庫のプラグイン設定（`.obsidian/plugins/cloudflare-artifacts-sync/data.json`）に保存されます。リポジトリ単位の書き込みトークンを使い、期限が切れたら発行し直してください。
-- 手順: Cloudflare ダッシュボード → Storage & databases → Artifacts でリポジトリを作り、remote URL と書き込みトークンを取る → プラグイン設定に貼る → コマンドパレットで「Sync now」。
+- 通信先は、設定した Artifacts の URL（ノートの内容を送る）と、準備・トークン更新のときだけ使う api.cloudflare.com の 2 つです。その他の送信や計測はありません。
+- トークンはこの保管庫のプラグイン設定（`.obsidian/plugins/cloudflare-artifacts-sync/data.json`）に保存されます。
+- 手順（コマンド不要）: ① Cloudflare ダッシュボード → マイプロフィール → API トークン → トークンを作成 → カスタムトークン（権限: アカウント / Artifacts / 編集）で API トークンを 1 つ作る ② プラグイン設定にアカウント ID と API トークンを貼る ③「Set up」を押す（名前空間とリポジトリを作り、30 日有効の書き込みトークンを発行して自動で入れます。期限前に自動更新） ④ コマンドパレットで「Sync now」。
 - デスクトップ版のみ。リモートと衝突したときは上書きせずに止まり、Git クライアントでの解決を案内します。

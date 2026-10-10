@@ -1,6 +1,6 @@
 {
   "name": "obsidian-artifacts-sync",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Sync your Obsidian vault (or a folder in it) with a Cloudflare Artifacts repository.",
   "main": "main.js",
   "private": true,
@@ -9,7 +9,8 @@
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "test": "vitest run",
     "version": "node version-bump.mjs && git add manifest.json versions.json",
-    "e2e": "node --no-deprecation --import tsx scripts/e2e.ts"
+    "e2e": "node --no-deprecation --import tsx scripts/e2e.ts",
+    "e2e:api": "node --no-deprecation --import tsx scripts/e2e-api.ts"
   },
   "keywords": [
     "obsidian",
