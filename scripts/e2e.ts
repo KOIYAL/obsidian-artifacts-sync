@@ -12,6 +12,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ArtifactsGit } from "../src/git";
+import { nodeFs, nodeHttp } from "../src/node-env";
 import { DEFAULT_IGNORE } from "../src/core";
 
 const remoteUrl = process.env.ARTIFACTS_REMOTE ?? "";
@@ -23,7 +24,7 @@ if (!remoteUrl || !token) {
 const mask = (s: unknown) => String(s).replaceAll(token, "<token>");
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "artifacts-sync-e2e-"));
 const mk = (dir: string) =>
-  new ArtifactsGit({ dir, remoteUrl, token, branch: "main", ignore: DEFAULT_IGNORE, author: { name: "e2e", email: "e2e@example.com" } });
+  new ArtifactsGit({ dir, fs: nodeFs(), http: nodeHttp(), remoteUrl, token, branch: "main", ignore: DEFAULT_IGNORE, author: { name: "e2e", email: "e2e@example.com" } });
 const check = (label: string, ok: boolean) => {
   console.log(`${ok ? "ok " : "NG "} ${label}`);
   if (!ok) process.exitCode = 1;

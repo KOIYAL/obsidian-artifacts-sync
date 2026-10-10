@@ -1,17 +1,38 @@
 /**
  * Thin wrapper over isomorphic-git for one working tree (the vault or a folder inside it).
- * Desktop only: uses Node's fs on the vault's real path. All network traffic goes to the single
- * Artifacts remote the user configured.
+ * The file system and HTTP client are injected: Node's on desktop, Obsidian's adapter and
+ * `requestUrl` on mobile (see vault-fs.ts and obsidian-http.ts). All network traffic goes to the
+ * single Artifacts remote the user configured.
  */
-import fs from "node:fs";
-import path from "node:path";
 import git from "isomorphic-git";
-import http from "isomorphic-git/http/node";
 import { authFor, commitMessage, planChanges, type StatusRow } from "./core";
 
+/** The parts of a file system isomorphic-git needs, in promise form. */
+export interface GitFs {
+  promises: {
+    readFile(path: string, options?: string | { encoding?: string }): Promise<Uint8Array | string>;
+    writeFile(path: string, data: string | Uint8Array | ArrayBuffer, options?: unknown): Promise<void>;
+    unlink(path: string): Promise<void>;
+    readdir(path: string): Promise<string[]>;
+    mkdir(path: string, options?: unknown): Promise<unknown>;
+    rmdir(path: string): Promise<void>;
+    stat(path: string): Promise<{ isDirectory(): boolean; isFile(): boolean }>;
+    lstat(path: string): Promise<{ isDirectory(): boolean; isFile(): boolean }>;
+    readlink(path: string): Promise<string>;
+    symlink(target: string, path: string): Promise<void>;
+    chmod?(path: string, mode: number): Promise<void>;
+  };
+}
+
+export interface GitHttp {
+  request(req: unknown): Promise<unknown>;
+}
+
 export interface GitOptions {
-  /** Absolute path of the working tree. */
+  /** Working tree: an absolute path on desktop, a vault-relative path ("" = vault root) on mobile. */
   dir: string;
+  fs: GitFs;
+  http: GitHttp;
   remoteUrl: string;
   token: string;
   branch: string;
@@ -37,6 +58,11 @@ export class GitConflictError extends Error {
 
 const REMOTE_NAME = "origin";
 
+function joinPath(dir: string, name: string): string {
+  if (!dir || dir === ".") return name;
+  return `${dir.replace(/\/+$/, "")}/${name}`;
+}
+
 export class ArtifactsGit {
   constructor(private readonly opts: GitOptions) {}
 
@@ -46,14 +72,30 @@ export class ArtifactsGit {
   }
 
   private get base() {
-    return { fs, dir: this.opts.dir };
+    // isomorphic-git accepts any fs with a `promises` member.
+    return { fs: this.opts.fs as unknown as Parameters<typeof git.init>[0]["fs"], dir: this.opts.dir || "." };
+  }
+
+  private get http() {
+    return this.opts.http as unknown as Parameters<typeof git.fetch>[0]["http"];
+  }
+
+  private async exists(path: string): Promise<boolean> {
+    try {
+      await this.opts.fs.promises.stat(path);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Make sure the folder is a repository pointing at the configured remote and branch. */
   async ensureRepo(): Promise<void> {
     const { dir, branch, remoteUrl } = this.opts;
-    fs.mkdirSync(dir, { recursive: true });
-    if (!fs.existsSync(path.join(dir, ".git"))) {
+    if (dir && dir !== "." && !(await this.exists(dir))) {
+      await this.opts.fs.promises.mkdir(dir, { recursive: true });
+    }
+    if (!(await this.exists(joinPath(dir, ".git")))) {
       await git.init({ ...this.base, defaultBranch: branch });
     }
     const remotes = await git.listRemotes(this.base);
@@ -70,7 +112,7 @@ export class ArtifactsGit {
     if (current !== branch) {
       const head = await this.head();
       if (!head) {
-        fs.writeFileSync(path.join(dir, ".git", "HEAD"), `ref: refs/heads/${branch}\n`);
+        await this.opts.fs.promises.writeFile(joinPath(joinPath(dir, ".git"), "HEAD"), `ref: refs/heads/${branch}\n`);
       } else {
         const branches = await git.listBranches(this.base);
         if (!branches.includes(branch)) await git.branch({ ...this.base, ref: branch, checkout: true });
@@ -92,7 +134,7 @@ export class ArtifactsGit {
     if (!(await this.remoteHasBranch())) return false;
     await git.fetch({
       ...this.base,
-      http,
+      http: this.http,
       remote: REMOTE_NAME,
       ref: this.opts.branch,
       singleBranch: true,
@@ -120,7 +162,7 @@ export class ArtifactsGit {
   /** Does the remote have the branch at all? (A brand-new repository has no refs.) */
   private async remoteHasBranch(): Promise<boolean> {
     const refs = await git.listServerRefs({
-      http,
+      http: this.http,
       url: this.opts.remoteUrl,
       prefix: `refs/heads/${this.opts.branch}`,
       onAuth: this.onAuth,
@@ -137,7 +179,7 @@ export class ArtifactsGit {
     try {
       await git.pull({
         ...this.base,
-        http,
+        http: this.http,
         remote: REMOTE_NAME,
         ref: this.opts.branch,
         singleBranch: true,
@@ -160,7 +202,7 @@ export class ArtifactsGit {
   async push(): Promise<boolean> {
     const res = await git.push({
       ...this.base,
-      http,
+      http: this.http,
       remote: REMOTE_NAME,
       ref: this.opts.branch,
       onAuth: this.onAuth,

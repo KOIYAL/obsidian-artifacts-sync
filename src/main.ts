@@ -1,8 +1,9 @@
-import { FileSystemAdapter, Notice, Plugin, TAbstractFile, normalizePath } from "obsidian";
-import path from "node:path";
+import { FileSystemAdapter, Notice, Platform, Plugin, TAbstractFile, normalizePath, requestUrl } from "obsidian";
 import { parseArtifactsRemote, tokenStatus, validateSettings } from "./core";
 import { ArtifactsApi, repoNameFromVault } from "./api";
-import { ArtifactsGit, GitConflictError } from "./git";
+import { ArtifactsGit, GitConflictError, type GitFs, type GitHttp } from "./git";
+import { createRequestUrlHttp } from "./obsidian-http";
+import { createVaultFs } from "./vault-fs";
 
 /** Renew automatically when less than this much lifetime is left. */
 const RENEW_BEFORE_MS = 2 * 24 * 3_600_000;
@@ -134,16 +135,23 @@ export default class ArtifactsSyncPlugin extends Plugin {
     }
   }
 
-  /** Absolute path of the working tree, or null when this vault is not on a local disk. */
-  private workingTree(): string | null {
-    const adapter = this.app.vault.adapter;
-    if (!(adapter instanceof FileSystemAdapter)) return null;
-    const base = adapter.getBasePath();
+  /**
+   * Where and how to run git. Desktop: Node's fs and HTTP on the vault's real path (fast). Mobile:
+   * Obsidian's adapter and `requestUrl`, with a vault-relative path. The desktop module is loaded
+   * lazily so the mobile build never touches Node modules.
+   */
+  private async environment(): Promise<{ dir: string; fs: GitFs; http: GitHttp } | null> {
     const folder = this.settings.syncFolder ? normalizePath(this.settings.syncFolder) : "";
-    return folder ? path.join(base, folder) : base;
+    const adapter = this.app.vault.adapter;
+    if (Platform.isDesktop && adapter instanceof FileSystemAdapter) {
+      const nodeEnv = await import("./node-env");
+      const base = adapter.getBasePath();
+      return { dir: folder ? nodeEnv.joinPath(base, folder) : base, fs: nodeEnv.nodeFs(), http: nodeEnv.nodeHttp() };
+    }
+    return { dir: folder, fs: createVaultFs(adapter), http: createRequestUrlHttp(requestUrl) };
   }
 
-  private client(): ArtifactsGit | null {
+  private async client(): Promise<ArtifactsGit | null> {
     const problems = validateSettings(this.settings);
     if (problems.length) {
       new Notice(`Cloudflare Artifacts Sync: ${problems.join(" ")}`);
@@ -154,15 +162,12 @@ export default class ArtifactsSyncPlugin extends Plugin {
       new Notice("Cloudflare Artifacts Sync: the repository token has expired. Issue a new one in the Cloudflare dashboard.");
       return null;
     }
-    const dir = this.workingTree();
-    if (!dir) {
-      new Notice("Cloudflare Artifacts Sync works only with vaults stored on this computer.");
-      return null;
-    }
+    const env = await this.environment();
+    if (!env) return null;
     const remote = parseArtifactsRemote(this.settings.remoteUrl);
     if (!remote) return null;
     return new ArtifactsGit({
-      dir,
+      ...env,
       remoteUrl: remote.url,
       token: this.settings.token,
       branch: this.settings.branch,
@@ -185,7 +190,7 @@ export default class ArtifactsSyncPlugin extends Plugin {
       return;
     }
     await this.renewToken();
-    const client = this.client();
+    const client = await this.client();
     if (!client) return;
     this.running = true;
     this.setStatus(`Artifacts: ${label}…`);

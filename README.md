@@ -35,18 +35,28 @@ If you prefer not to store an API token, you can instead paste a remote URL and 
 
 If the remote changed a note that you also edited (or deleted) since your last sync, the plugin stops before pushing and shows a notice. Nothing is overwritten. Resolve it with any Git client (or copy the note aside, delete the folder's `.git`, sync again, and paste your version back). Automatic "keep both versions" handling is planned.
 
+## Desktop and mobile
+
+- Desktop uses the vault's folder on disk with Node's file system (fast).
+- Mobile (iOS and Android) uses Obsidian's own file access and `requestUrl`, so no Git client or Node is needed. The `.git` folder lives inside the synced folder; Obsidian hides it. Large vaults sync more slowly on a phone, so pick one folder to sync there.
+- Both sides use the same Git engine (isomorphic-git), so a vault can be synced from a laptop and a phone alternately.
+
 ## Requirements and limits
 
-- Desktop only (uses the vault's folder on disk).
 - Repository size up to 1 GB and files up to 32 MB (Artifacts limits).
-- Tokens expire; the settings page shows the remaining time.
+- Tokens expire; the settings page shows the remaining time, and they renew automatically when an API token is set.
 
 ## Development
 
 ```sh
 npm install
 npm run build     # type-check and bundle to main.js
-npm test          # unit tests for the pure logic
+npm test          # unit tests (pure logic, vault file system, requestUrl client, REST client)
+# Opt-in checks against a real Artifacts repository:
+ARTIFACTS_REMOTE=… ARTIFACTS_TOKEN=… npm run e2e          # desktop code path
+ARTIFACTS_REMOTE=… ARTIFACTS_TOKEN=… npm run e2e:mobile   # mobile code path (adapter fs + requestUrl)
+ARTIFACTS_REMOTE=… ARTIFACTS_TOKEN=… npm run e2e:bundle   # the built main.js in simulated desktop and mobile Obsidian
+CLOUDFLARE_ACCOUNT_ID=… CLOUDFLARE_API_TOKEN=… npm run e2e:api   # REST client: namespace, repo, token, push
 ```
 
 ## 日本語
@@ -56,4 +66,5 @@ Obsidian の保管庫（またはその中の 1 フォルダ）を Cloudflare Ar
 - 通信先は、設定した Artifacts の URL（ノートの内容を送る）と、準備・トークン更新のときだけ使う api.cloudflare.com の 2 つです。その他の送信や計測はありません。
 - トークンはこの保管庫のプラグイン設定（`.obsidian/plugins/cloudflare-artifacts-sync/data.json`）に保存されます。
 - 手順（コマンド不要）: ① Cloudflare ダッシュボード → マイプロフィール → API トークン → トークンを作成 → カスタムトークン（権限: アカウント / Artifacts / 編集）で API トークンを 1 つ作る ② プラグイン設定にアカウント ID と API トークンを貼る ③「Set up」を押す（名前空間とリポジトリを作り、30 日有効の書き込みトークンを発行して自動で入れます。期限前に自動更新） ④ コマンドパレットで「Sync now」。
-- デスクトップ版のみ。リモートと衝突したときは上書きせずに止まり、Git クライアントでの解決を案内します。
+- デスクトップとスマホ（iOS / Android）の両方で動きます。スマホでは Obsidian のファイル機能と通信機能だけで同期するので、Git の道具は要りません。大きな保管庫はスマホでは遅くなるので、同期するフォルダを 1 つに絞るのがおすすめです。
+- リモートと衝突したときは上書きせずに止まり、Git クライアントでの解決を案内します。

@@ -1,10 +1,10 @@
 {
 	"id": "cloudflare-artifacts-sync",
 	"name": "Cloudflare Artifacts Sync",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"minAppVersion": "1.5.0",
-	"description": "Sync your vault, or one folder of it, with a Cloudflare Artifacts repository (a Git-compatible store). Commit, pull and push with one command or on a timer.",
+	"description": "Sync your vault, or one folder of it, with a Cloudflare Artifacts repository (a Git-compatible store). Commit, pull and push with one command or on a timer. Works on desktop and mobile.",
 	"author": "KOIYAL",
 	"authorUrl": "https://koiyal.com",
-	"isDesktopOnly": true
+	"isDesktopOnly": false
 }

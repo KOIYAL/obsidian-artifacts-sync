@@ -9,15 +9,27 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = process.argv[2] === "production";
+const POLYFILLED = new Set(["buffer", "events"]);
 
 const context = await esbuild.context({
   banner: { js: banner },
   entryPoints: ["src/main.ts"],
   bundle: true,
-  external: ["obsidian", "electron", ...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
+  // Node built-ins stay external (desktop loads them lazily; the phone never asks for them),
+  // except the ones isomorphic-git needs at load time, which are bundled from their npm polyfills.
+  external: [
+    "obsidian",
+    "electron",
+    ...builtinModules.filter((m) => !POLYFILLED.has(m)),
+    ...builtinModules.filter((m) => !POLYFILLED.has(m)).map((m) => `node:${m}`),
+  ],
+  alias: { "node:buffer": "buffer", "node:events": "events" },
   format: "cjs",
   target: "es2021",
-  platform: "node",
+  // "browser" makes isomorphic-git resolve to its browser build (no Node built-ins at load time),
+  // which is what the phone needs. Desktop-only modules (node:fs, isomorphic-git/http/node) stay
+  // external and are loaded lazily by src/node-env.ts.
+  platform: "browser",
   logLevel: "info",
   sourcemap: prod ? false : "inline",
   treeShaking: true,
