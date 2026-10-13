@@ -78,10 +78,17 @@ async function runMode(mode: Mode): Promise<boolean> {
     if (mode === "mobile" && NODE_ONLY.test(request)) throw new Error(`not available on mobile: ${request}`);
     return origLoad.call(this, request, ...rest);
   };
+  // Phones have no global Buffer or process. Shadow both for the bundle only (Node's own fetch
+  // still needs them), so a bare reference inside the bundle fails here instead of on a phone.
+  let entry = mainJs;
+  if (mode === "mobile") {
+    entry = path.join(root, "main.mobile.js");
+    fs.writeFileSync(entry, `(function (Buffer, process) {${fs.readFileSync(mainJs, "utf8")}\n})(undefined, undefined);`);
+  }
   try {
     const require = createRequire(__filename);
-    delete require.cache[mainJs];
-    const mod = require(mainJs) as { default?: new () => PluginLike } & (new () => PluginLike);
+    delete require.cache[entry];
+    const mod = require(entry) as { default?: new () => PluginLike } & (new () => PluginLike);
     const PluginClass = mod.default ?? mod;
     const plugin = new PluginClass();
     const adapter = mode === "mobile" ? fakeAdapter(root) : Object.assign(new FileSystemAdapter(root), fakeAdapter(root));

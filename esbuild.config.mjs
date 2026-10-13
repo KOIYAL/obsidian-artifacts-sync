@@ -24,6 +24,8 @@ const context = await esbuild.context({
     ...builtinModules.filter((m) => !POLYFILLED.has(m)).map((m) => `node:${m}`),
   ],
   alias: { "node:buffer": "buffer", "node:events": "events" },
+  // isomorphic-git uses the global `Buffer` (76 places). Phones have none, so inject the polyfill.
+  inject: ["src/shims/buffer-global.js"],
   format: "cjs",
   target: "es2021",
   // "browser" makes isomorphic-git resolve to its browser build (no Node built-ins at load time),
