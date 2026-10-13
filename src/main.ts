@@ -1,6 +1,6 @@
 import { FileSystemAdapter, Notice, Platform, Plugin, TAbstractFile, normalizePath, requestUrl } from "obsidian";
 import { parseArtifactsRemote, tokenStatus, validateSettings } from "./core";
-import { ArtifactsApi, repoNameFromVault } from "./api";
+import { ArtifactsApi, type RepoInfo, repoNameFromVault } from "./api";
 import { ArtifactsGit, GitConflictError, type GitFs, type GitHttp } from "./git";
 import { createRequestUrlFetch, createRequestUrlHttp } from "./obsidian-http";
 import { createVaultFs } from "./vault-fs";
@@ -23,6 +23,12 @@ export default class ArtifactsSyncPlugin extends Plugin {
     this.addSettingTab(new ArtifactsSyncSettingTab(this.app, this));
     this.statusBar = this.addStatusBarItem();
     this.setStatus("Artifacts: idle");
+    // Three ways to sync without the command palette: the ribbon icon, the status bar item, and a
+    // button at the top of the settings page.
+    this.addRibbonIcon("refresh-cw", "Sync with Cloudflare Artifacts", () => void this.runSync("manual"));
+    this.statusBar.addClass("mod-clickable");
+    this.statusBar.setAttr("aria-label", "Sync with Cloudflare Artifacts");
+    this.statusBar.addEventListener("click", () => void this.runSync("manual"));
 
     this.addCommand({ id: "sync-now", name: "Sync now (commit, pull, push)", callback: () => void this.runSync("manual") });
     this.addCommand({ id: "pull", name: "Pull from Artifacts", callback: () => void this.runPull() });
@@ -105,6 +111,55 @@ export default class ArtifactsSyncPlugin extends Plugin {
     } catch (err) {
       new Notice(`Cloudflare Artifacts Sync: setup failed: ${err instanceof Error ? err.message : String(err)}`, 10_000);
       console.error("[cloudflare-artifacts-sync] setup", err);
+    }
+  }
+
+  /** Repositories in the configured namespace, for the "connect to an existing repository" picker. */
+  async listRepositories(): Promise<RepoInfo[] | null> {
+    const api = this.api();
+    if (!api) return null;
+    try {
+      return await api.listRepos(this.settings.namespace || "default");
+    } catch (err) {
+      new Notice(`Cloudflare Artifacts Sync: could not list repositories: ${err instanceof Error ? err.message : String(err)}`, 10_000);
+      return null;
+    }
+  }
+
+  /** Point this vault at a repository another device created: store its remote and issue a token. */
+  async connectToRepository(repo: RepoInfo): Promise<void> {
+    const api = this.api();
+    if (!api) return;
+    const namespace = this.settings.namespace || "default";
+    try {
+      const issued = await api.issueToken(namespace, repo.name, "write");
+      this.settings.repoName = repo.name;
+      this.settings.remoteUrl = repo.remote;
+      this.settings.token = issued.token;
+      await this.saveSettings();
+      new Notice(`Cloudflare Artifacts Sync: connected to ${namespace}/${repo.name}. Run Sync now to bring the notes in.`);
+    } catch (err) {
+      new Notice(`Cloudflare Artifacts Sync: connecting failed: ${err instanceof Error ? err.message : String(err)}`, 10_000);
+    }
+  }
+
+  /**
+   * Delete the local Git history (the hidden .git folder) and keep the notes. The next sync starts
+   * from the remote branch, so this is the way out after syncing to the wrong repository.
+   */
+  async resetLocalHistory(): Promise<void> {
+    if (this.running) {
+      new Notice("Cloudflare Artifacts Sync: a sync is already running.");
+      return;
+    }
+    const folder = this.settings.syncFolder ? normalizePath(this.settings.syncFolder) : "";
+    const gitDir = normalizePath(folder ? `${folder}/.git` : ".git");
+    const adapter = this.app.vault.adapter;
+    try {
+      if (await adapter.exists(gitDir)) await adapter.rmdir(gitDir, true);
+      new Notice("Cloudflare Artifacts Sync: local history removed. Notes are untouched. Run Sync now to start from the repository.");
+    } catch (err) {
+      new Notice(`Cloudflare Artifacts Sync: could not remove ${gitDir}: ${err instanceof Error ? err.message : String(err)}`, 10_000);
     }
   }
 

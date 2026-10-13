@@ -27,9 +27,22 @@ There is no telemetry. Tokens are stored in this vault's plugin data (`.obsidian
 1. Create a Cloudflare API token once: dashboard → **My profile → API tokens → Create token → Create custom token**, permission **Account / Artifacts / Edit**, scoped to your account. Copy the token. (Artifacts needs the Workers Paid plan; see Cloudflare's pricing.)
 2. In Obsidian, install the plugin, open its settings and paste your **Account ID** and the **API token**. Leave the namespace as `default` and the repository name empty (the vault name is used), or choose your own.
 3. Press **Set up**. The plugin creates the namespace and repository if needed, issues a 30-day write token and fills in the remote URL and token. Tokens are renewed automatically while the API token is present.
-4. Run **Sync now** from the command palette. Optionally set an automatic sync interval.
+4. Press **Sync now** (the button at the top of the settings page, the refresh icon in the left ribbon, the **Artifacts** item in the status bar, or the command palette). Set up only prepares the repository; nothing is uploaded until the first sync. Optionally set an automatic sync interval.
 
 If you prefer not to store an API token, you can instead paste a remote URL and a repository token by hand (from the dashboard or `wrangler artifacts repos issue-token`). You will then need to paste a new token when it expires.
+
+## Using the same vault on a second device (phone or another computer)
+
+Do **not** press Set up again: it would create a second repository when the vault names differ. Instead:
+
+1. On the second device, enter the same **Account ID**, **API token** and **Namespace**.
+2. Press **Choose repository** ("Connect to an existing repository") and pick the repository your first device created. The plugin issues a token for it and fills in the remote URL.
+3. Set **Branch** and **Folder to sync** to the same values as on the first device (usually `main` and empty, or the one folder you chose).
+4. Press **Sync now**. The notes come down from the repository; anything already on this device is committed on top.
+
+If a device has already synced to the wrong repository: connect it to the right one as above, press **Reset local history (keep notes)** in the Recovery section, then **Sync now**. The extra repository can be deleted in the dashboard (Storage & databases → Artifacts → the repository).
+
+Rule of thumb: press Sync now before you leave a device and after you pick up the next one, or turn on the automatic sync interval on both.
 
 ## When two places edit the same note
 
@@ -65,6 +78,9 @@ Obsidian の保管庫（またはその中の 1 フォルダ）を Cloudflare Ar
 
 - 通信先は、設定した Artifacts の URL（ノートの内容を送る）と、準備・トークン更新のときだけ使う api.cloudflare.com の 2 つです。その他の送信や計測はありません。
 - トークンはこの保管庫のプラグイン設定（`.obsidian/plugins/cloudflare-artifacts-sync/data.json`）に保存されます。
-- 手順（コマンド不要）: ① Cloudflare ダッシュボード → マイプロフィール → API トークン → トークンを作成 → カスタムトークン（権限: アカウント / Artifacts / 編集）で API トークンを 1 つ作る ② プラグイン設定にアカウント ID と API トークンを貼る ③「Set up」を押す（名前空間とリポジトリを作り、30 日有効の書き込みトークンを発行して自動で入れます。期限前に自動更新） ④ コマンドパレットで「Sync now」。
+- 手順（コマンド不要）: ① Cloudflare ダッシュボード → マイプロフィール → API トークン → トークンを作成 → カスタムトークン（権限: アカウント / Artifacts / 編集）で API トークンを 1 つ作る ② プラグイン設定にアカウント ID と API トークンを貼る ③「Set up」を押す（名前空間とリポジトリを作り、30 日有効の書き込みトークンを発行して自動で入れます。期限前に自動更新。**この時点では何も送られません**） ④「Sync now」を押す（設定画面の一番上のボタン、左の帯の更新アイコン、画面下の「Artifacts」の表示、コマンドパレットのどれでも同じ）。
+- **2 台目（スマホや別の PC）で同じ保管庫を使うとき**: 「Set up」は押さない（保管庫名が違うと別のリポジトリができます）。① 同じアカウント ID・API トークン・名前空間を入れる ②「Choose repository」で 1 台目が作ったリポジトリを選ぶ（トークン発行と remote URL の入力は自動） ③「Branch」と「Folder to sync」を 1 台目と同じにする（通常は main と空欄） ④「Sync now」。
+- 間違ったリポジトリに同期してしまったら: 正しいリポジトリに「Choose repository」でつなぎ直し → 設定の一番下「Reset local history (keep notes)」（ノートは消えません。履歴だけ消します）→「Sync now」。余分なリポジトリはダッシュボード（Storage & databases → Artifacts）で削除できます。
+- 端末を切り替える前後に「Sync now」を押すか、両方で自動同期の間隔を入れておくのが安全です。
 - デスクトップとスマホ（iOS / Android）の両方で動きます。スマホでは Obsidian のファイル機能と通信機能だけで同期するので、Git の道具は要りません。大きな保管庫はスマホでは遅くなるので、同期するフォルダを 1 つに絞るのがおすすめです。
 - リモートと衝突したときは上書きせずに止まり、Git クライアントでの解決を案内します。

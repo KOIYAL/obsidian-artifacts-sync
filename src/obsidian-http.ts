@@ -32,7 +32,7 @@ export interface GitHttpResponse {
   statusMessage: string;
 }
 
-async function collect(body: GitHttpRequest["body"]): Promise<Uint8Array | undefined> {
+export async function collectBody(body: GitHttpRequest["body"]): Promise<Uint8Array | undefined> {
   if (!body) return undefined;
   const chunks: Uint8Array[] = [];
   for await (const chunk of body as AsyncIterable<Uint8Array>) chunks.push(chunk);
@@ -49,7 +49,7 @@ async function collect(body: GitHttpRequest["body"]): Promise<Uint8Array | undef
 export function createRequestUrlHttp(requestUrl: RequestUrlLike) {
   return {
     async request(req: GitHttpRequest): Promise<GitHttpResponse> {
-      const bytes = await collect(req.body);
+      const bytes = await collectBody(req.body);
       const res = await requestUrl({
         url: req.url,
         method: req.method ?? "GET",

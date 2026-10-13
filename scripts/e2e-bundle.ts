@@ -43,8 +43,9 @@ async function runMode(mode: Mode): Promise<boolean> {
       addCommand() {}
       addSettingTab() {}
       addStatusBarItem() {
-        return { setText() {} };
+        return { setText() {}, addClass() {}, setAttr() {}, addEventListener() {} };
       }
+      addRibbonIcon() {}
       registerEvent() {}
       registerInterval() {}
       async loadData() {
@@ -53,6 +54,7 @@ async function runMode(mode: Mode): Promise<boolean> {
       async saveData() {}
     },
     PluginSettingTab: class {},
+    FuzzySuggestModal: class {},
     FileSystemAdapter,
     Setting: class {},
     Notice: class {

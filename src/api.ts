@@ -109,6 +109,13 @@ export class ArtifactsApi {
     }
   }
 
+  /** Repositories in a namespace (so a second device can pick the one the first device created). */
+  async listRepos(namespace: string): Promise<RepoInfo[]> {
+    const result = await this.call("GET", `/artifacts/namespaces/${encodeURIComponent(namespace)}/repos`);
+    const items = Array.isArray(result) ? (result as Json[]) : Array.isArray(result.repos) ? (result.repos as Json[]) : [];
+    return items.map((r) => ({ name: String(r.name ?? ""), remote: String(r.remote ?? "") })).filter((r) => r.name);
+  }
+
   async getRepo(namespace: string, name: string): Promise<RepoInfo | null> {
     try {
       const result = await this.call("GET", `/artifacts/namespaces/${encodeURIComponent(namespace)}/repos/${encodeURIComponent(name)}`);

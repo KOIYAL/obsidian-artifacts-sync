@@ -89,3 +89,25 @@ describe("repoNameFromVault", () => {
     expect(repoNameFromVault("--Notes.v2--")).toBe("notes.v2");
   });
 });
+
+describe("ArtifactsApi.listRepos", () => {
+  const base = `/accounts/${ACCOUNT}/artifacts/namespaces`;
+  it("reads an array result or a repos field", async () => {
+    const arrayApi = new ArtifactsApi({
+      accountId: ACCOUNT,
+      apiToken: "t",
+      fetchImpl: fakeFetch({
+        [`GET ${base}/default/repos`]: () => ({ status: 200, body: { success: true, result: [{ name: "a", remote: "https://x/git/default/a.git" }, { name: "" }] } }),
+      }),
+    });
+    expect(await arrayApi.listRepos("default")).toEqual([{ name: "a", remote: "https://x/git/default/a.git" }]);
+    const objectApi = new ArtifactsApi({
+      accountId: ACCOUNT,
+      apiToken: "t",
+      fetchImpl: fakeFetch({
+        [`GET ${base}/default/repos`]: () => ({ status: 200, body: { success: true, result: { repos: [{ name: "b", remote: "r" }] } } }),
+      }),
+    });
+    expect(await objectApi.listRepos("default")).toEqual([{ name: "b", remote: "r" }]);
+  });
+});

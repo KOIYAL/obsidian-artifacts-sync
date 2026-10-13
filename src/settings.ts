@@ -1,6 +1,24 @@
-import { App, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, FuzzySuggestModal, Notice, PluginSettingTab, Setting } from "obsidian";
+import type { RepoInfo } from "./api";
 import type ArtifactsSyncPlugin from "./main";
 import { DEFAULT_IGNORE, tokenStatus, validateSettings } from "./core";
+
+/** Pick one of the repositories in the namespace (second device, or after a mistaken Set up). */
+class RepoPickerModal extends FuzzySuggestModal<RepoInfo> {
+  constructor(app: App, private readonly repos: RepoInfo[], private readonly onPick: (repo: RepoInfo) => void) {
+    super(app);
+    this.setPlaceholder("Choose the repository this vault should sync with");
+  }
+  getItems(): RepoInfo[] {
+    return this.repos;
+  }
+  getItemText(repo: RepoInfo): string {
+    return repo.name;
+  }
+  onChooseItem(repo: RepoInfo): void {
+    this.onPick(repo);
+  }
+}
 
 export interface ArtifactsSyncSettings {
   /** Cloudflare account ID (32 hex characters). Used with the API token to set things up. */
@@ -58,6 +76,20 @@ export class ArtifactsSyncSettingTab extends PluginSettingTab {
     containerEl.empty();
     const s = this.plugin.settings;
 
+    new Setting(containerEl)
+      .setName("Sync now")
+      .setDesc("Commit, pull and push. The same as the refresh icon in the left ribbon and the Artifacts item in the status bar.")
+      .addButton((button) =>
+        button.setCta().setButtonText("Sync now").onClick(async () => {
+          button.setDisabled(true);
+          try {
+            await this.plugin.runSync("manual");
+          } finally {
+            button.setDisabled(false);
+          }
+        }),
+      );
+
     new Setting(containerEl).setName("Connect with a Cloudflare API token").setHeading();
     const intro = containerEl.createEl("p", { cls: "setting-item-description" });
     intro.setText(
@@ -107,8 +139,11 @@ export class ArtifactsSyncSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Set up repository")
-      .setDesc("Creates the namespace and repository if needed, issues a 30-day write token, and fills in the fields below.")
+      .setName("Set up a new repository (first device)")
+      .setDesc(
+        "Creates the namespace and repository if needed, issues a 30-day write token, and fills in the fields below. " +
+          "Do this on one device only. On every other device use \"Connect to an existing repository\".",
+      )
       .addButton((button) =>
         button.setCta().setButtonText("Set up").onClick(async () => {
           button.setDisabled(true);
@@ -117,6 +152,28 @@ export class ArtifactsSyncSettingTab extends PluginSettingTab {
           } finally {
             button.setDisabled(false);
             this.display();
+          }
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Connect to an existing repository (other devices)")
+      .setDesc("Lists the repositories in the namespace so you can pick the one your first device created. Issues a token for it and fills in the fields below.")
+      .addButton((button) =>
+        button.setButtonText("Choose repository").onClick(async () => {
+          button.setDisabled(true);
+          try {
+            const repos = await this.plugin.listRepositories();
+            if (!repos) return;
+            if (repos.length === 0) {
+              new Notice("Cloudflare Artifacts Sync: no repositories in this namespace yet. Press Set up on your first device.");
+              return;
+            }
+            new RepoPickerModal(this.app, repos, (repo) => {
+              void this.plugin.connectToRepository(repo).then(() => this.display());
+            }).open();
+          } finally {
+            button.setDisabled(false);
           }
         }),
       );
@@ -178,6 +235,7 @@ export class ArtifactsSyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Branch")
+      .setDesc("Leave it as main unless you created the repository with another default branch. It is shown on the repository page in the dashboard. Use the same value on every device.")
       .addText((text) =>
         text.setValue(s.branch).onChange(async (value) => {
           s.branch = value.trim() || "main";
@@ -187,7 +245,11 @@ export class ArtifactsSyncSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Folder to sync")
-      .setDesc("Leave empty to sync the whole vault. Otherwise a folder inside the vault, for example Knowledge.")
+      .setDesc(
+        "Leave empty to sync the whole vault. Otherwise type a folder name exactly as it appears in Obsidian's file list " +
+          "(for example Knowledge, or Projects/Notes for a subfolder). Use the same value on every device. " +
+          "A large vault syncs faster when you pick one folder.",
+      )
       .addText((text) =>
         text.setValue(s.syncFolder).onChange(async (value) => {
           s.syncFolder = value.trim().replace(/^\/+|\/+$/g, "");
@@ -256,6 +318,36 @@ export class ArtifactsSyncSettingTab extends PluginSettingTab {
         button.setButtonText("Check").onClick(() => {
           const problems = validateSettings(s);
           new Notice(problems.length ? problems.join("\n") : "Settings look good.");
+        }),
+      );
+
+    new Setting(containerEl).setName("Recovery").setHeading();
+    let armed = false;
+    new Setting(containerEl)
+      .setName("Reset local history (keep notes)")
+      .setDesc(
+        "Removes this folder's hidden .git history and nothing else. Use it after syncing to the wrong repository: " +
+          "connect to the right one above, press this, then Sync now. The next sync starts from the repository's history.",
+      )
+      .addButton((button) =>
+        button.setWarning().setButtonText("Reset").onClick(async () => {
+          if (!armed) {
+            armed = true;
+            button.setButtonText("Press again to confirm");
+            window.setTimeout(() => {
+              armed = false;
+              button.setButtonText("Reset");
+            }, 8_000);
+            return;
+          }
+          armed = false;
+          button.setDisabled(true);
+          try {
+            await this.plugin.resetLocalHistory();
+          } finally {
+            button.setDisabled(false);
+            button.setButtonText("Reset");
+          }
         }),
       );
   }
