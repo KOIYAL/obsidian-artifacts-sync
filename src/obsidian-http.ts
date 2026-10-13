@@ -70,3 +70,27 @@ export function createRequestUrlHttp(requestUrl: RequestUrlLike) {
     },
   };
 }
+
+/**
+ * A minimal `fetch` built on Obsidian's `requestUrl`, for the control-plane API (JSON only).
+ * `requestUrl` works on mobile, is not subject to the web view's CORS rules, and is a plain
+ * function (the global `fetch` must be called on `window`, or Electron throws "Illegal invocation").
+ */
+export function createRequestUrlFetch(requestUrl: RequestUrlLike): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const headers: Record<string, string> = {};
+    new Headers(init?.headers ?? {}).forEach((v, k) => {
+      headers[k] = v;
+    });
+    const body = init?.body;
+    const res = await requestUrl({
+      url,
+      method: init?.method ?? "GET",
+      headers,
+      body: typeof body === "string" || body instanceof ArrayBuffer ? body : undefined,
+      throw: false,
+    });
+    return new Response(res.arrayBuffer, { status: res.status, headers: res.headers });
+  }) as typeof fetch;
+}

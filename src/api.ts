@@ -63,7 +63,9 @@ export class ArtifactsApi {
   private readonly baseUrl: string;
 
   constructor(private readonly opts: ApiClientOptions) {
-    this.fetchImpl = opts.fetchImpl ?? fetch;
+    // Wrap the global fetch so it is never called detached from `window` (Electron throws
+    // "Failed to execute 'fetch' on 'Window': Illegal invocation" for an unbound reference).
+    this.fetchImpl = opts.fetchImpl ?? ((input, init) => fetch(input, init));
     this.baseUrl = (opts.baseUrl ?? "https://api.cloudflare.com/client/v4").replace(/\/$/, "");
   }
 

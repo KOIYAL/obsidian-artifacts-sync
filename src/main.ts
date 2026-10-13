@@ -2,7 +2,7 @@ import { FileSystemAdapter, Notice, Platform, Plugin, TAbstractFile, normalizePa
 import { parseArtifactsRemote, tokenStatus, validateSettings } from "./core";
 import { ArtifactsApi, repoNameFromVault } from "./api";
 import { ArtifactsGit, GitConflictError, type GitFs, type GitHttp } from "./git";
-import { createRequestUrlHttp } from "./obsidian-http";
+import { createRequestUrlFetch, createRequestUrlHttp } from "./obsidian-http";
 import { createVaultFs } from "./vault-fs";
 
 /** Renew automatically when less than this much lifetime is left. */
@@ -82,7 +82,8 @@ export default class ArtifactsSyncPlugin extends Plugin {
       new Notice("Cloudflare Artifacts Sync: enter a Cloudflare API token with the Artifacts permission.");
       return null;
     }
-    return new ArtifactsApi({ accountId, apiToken });
+    // requestUrl: works on mobile and is not the window-bound global fetch (0.3.0 failed with "Illegal invocation")
+    return new ArtifactsApi({ accountId, apiToken, fetchImpl: createRequestUrlFetch(requestUrl) });
   }
 
   /** Create namespace and repository as needed, issue a write token, and store remote and token. */
